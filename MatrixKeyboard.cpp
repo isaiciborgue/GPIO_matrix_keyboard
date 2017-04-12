@@ -1,40 +1,77 @@
 #include "MatrixKeyboard.hh"
 
-MatrixKeyboard::MatrixKeyboard()
+MatrixKeyboard::MatrixKeyboard(vector<uInt> rows, vector<uInt> cols, vector<KeySym> keys)
 {
-	// Connect to the X server
+	// Initializing X Display
 	myXDisplay = XOpenDisplay(NULL);
-
-   if (! myXDisplay)
+	if (! myXDisplay)
    		cerr << "Couldn't open the X display." << endl;
 
-   // Initialize the `wiringPi` library
-   	if (wiringPiSetup() == -1)
+   	// Initialize WiringPi Library
+   	if (wiringPiSetup() < 0)
 		cerr << "Couldn't initialize the wiringPi library." << endl;
 
-	keyboard[0][0].rowPin = 12;
-	keyboard[0][0].colPin = 13;
-	keyboard[0][0].keysym = XK_X;
+	this->rows = rows;
+	this->cols = cols;
+	this->keys = keys;
+	for (uInt i = 0; i < this->keys.size(); i++)
+		lastStates.push_back(false);
 
-	keyboard[0][1].rowPin = 12;
-	keyboard[0][1].colPin = 14;
-	keyboard[0][1].keysym = XK_A;
-
-	for (uInt i = 0; i < nRows; i++)
+	for (uInt i = 0; i < this->rows.size(); i++)
 	{
-		pinMode(keyboard[i][0].rowPin, OUTPUT);
-		digitalWrite(keyboard[i][0].rowPin, LOW);
+		pinMode(this->rows[i], OUTPUT);
+		digitalWrite(this->rows[i], LOW);
 	}
 
-	for (uInt j = 0; j < nCols; j++)
+	for (uInt i = 0; i < this->cols.size(); i++)
 	{
-		pinMode(keyboard[0][j].colPin, INPUT);
-		pullUpDnControl(keyboard[0][j].colPin, PUD_DOWN);
+		pinMode(this->cols[i], INPUT);
+		pullUpDnControl(this->cols[i], PUD_DOWN);
 	}
+	
+	delay = 5;
+}
 
-	for (uInt i = 0; i < nRows; i++)
-		for (uInt j = 0; j < nCols; j++)
-			keyboard[i][j].lastState = KEY_DOWN;
+
+void MatrixKeyboard::run()
+{
+	uInt k = 0;
+	
+	while (true)
+	{
+		k = 0;
+		for (uInt i = 0; i < rows.size(); i++)
+		{
+			digitalWrite(rows[i], HIGH);
+			sleep_for(milliseconds(delay));
+
+			for (uInt j = 0; j < cols.size(); j++)
+			{
+				sleep_for(milliseconds(delay));
+				if (digitalRead(cols[j]))
+				{
+					if (! lastStates[k])
+					{
+						pressKey(keys[k]);
+						lastStates[k] = true;
+					}
+
+					k++;
+				}
+				else 
+				{
+					if (lastStates[k]) 
+					{
+						releaseKey(keys[k]);
+						lastStates[k] = false;
+					}
+
+					k++;
+				}
+			}
+			digitalWrite(rows[i], LOW);
+		}
+	}
 }
 
 
@@ -68,43 +105,4 @@ void MatrixKeyboard::releaseKey(KeySym keysym)
 
 	XSync (myXDisplay, False);
 	XTestGrabControl (myXDisplay, False);
-}
-
-
-void MatrixKeyboard::run()
-{
-	uInt z = 0;
-	while (z < 1000)
-	{
-		for (uInt i = 0; i < nRows; i++)
-		{
-			digitalWrite(keyboard[i][0].rowPin, HIGH); 
-			for (uInt j = 0; j < nCols; j++)
-			{
-				sleep_for(milliseconds(25));
-				if (keyboard[i][j].lastState)
-				{
-					if (! digitalRead(keyboard[i][j].colPin))
-					{
-						releaseKey(keyboard[i][j].keysym);
-						keyboard[i][j].lastState = KEY_UP;
-					}
-					else continue; 
-				}
-				else 
-				{
-					if (digitalRead(keyboard[i][j].colPin))
-					{
-						pressKey(keyboard[i][j].keysym);
-						keyboard[i][j].lastState = KEY_DOWN;
-					}
-					else continue;
-				}
-
-			}
-			sleep_for(milliseconds(25));
-			digitalWrite(keyboard[i][0].rowPin, LOW);
-		}
-		z++;
-	}
 }
